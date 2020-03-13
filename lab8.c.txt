@@ -1,0 +1,198 @@
+#include <msp430.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <EEL4746.h>
+//---------------------------------
+#define ALL_ON 0
+#define ALL_OFF 1
+#define RED_ON 2
+#define RED_OFF 3
+#define GREEN_ON 4
+#define GREEN_OFF 5
+#define DELAY_FOR_1S 104500
+#define SLEEP   1
+//------------------------------------
+void myDelay(uint32_t vDelayValue);
+void myoldDelay(uint32_t vDelayValue);
+void myLED(uint8_t Color);
+void BlinkLED(uint8_t Color);
+void Display(uint8_t vCount);
+
+uint8_t vOn;
+uint8_t vUPn;
+uint8_t vCount;
+
+int main(void)
+{
+  volatile unsigned int i;
+
+  WDTCTL = WDTPW+WDTHOLD;                  // Stop WDT
+  P1DIR |= BIT0;                           // P1.0 set as output
+  P4DIR |= BIT7;
+
+  P1OUT &= ~BIT0;
+  P4OUT &= ~BIT7;
+
+  P1DIR &= ~BIT1;
+  P1REN |= BIT1;
+  P1OUT |= BIT1;
+
+  P2DIR &= ~BIT1;
+  P2REN |= BIT1;
+  P2OUT |= BIT1;
+
+ // Port registers used to figure out whenever a button has been pressed
+  P2IES |= BIT1; // Switch S1 is connected to Port 2.1
+  P1IES |= BIT1; // Switch S2 is connected to Port 1.1
+
+  P1IE |= BIT1;
+  P2IE |= BIT1;
+
+  vOn = 1;
+  vUPn = 0;
+  vCount = 0;
+
+  EnableInterrupts4746(DELAY_FOR_1S, SLEEP);
+
+  /*
+  while(1)
+  {
+      if((P2IFG & BIT1) == BIT1)
+      {
+          vOn = !vOn;
+          P2IFG &= ~BIT1;
+      }
+      if( (P1IFG & BIT1) == BIT1)
+      {
+          vUPn = !vUPn;
+          P1IFG &= ~BIT1;
+      }
+  }
+  */
+}
+
+#pragma vector=PORT2_VECTOR
+__interrupt void PORT2 (void)
+{
+    //select correct ISR handler
+    switch (P2IV)
+    {
+    case 4:
+        vOn = !vOn;
+        P2IFG &= ~BIT1;
+        break;
+    default:
+        break;
+    }
+}
+
+#pragma vector=PORT1_VECTOR
+__interrupt void PORT1 (void)
+{
+    //select correct ISR handler
+    switch (P1IV)
+    {
+    case 4:
+        vUPn = ~vUPn;
+        P1IFG &= ~BIT1;
+        break;
+    default:
+        break;
+    }
+}
+
+#pragma vector = TIMER0_A0_VECTOR
+__interrupt void TIMER0_A0(void)        //use two dashes in front of interrupt not one
+{
+    if(vOn != 0)
+    {
+        if(vUPn == 0)
+        {
+            if(vCount == 3)
+                vCount = 0;
+            else
+                vCount++;
+        }
+        else
+        {
+            if(vCount == 0)
+                vCount = 3;
+            else
+                vCount--;
+        }
+    }
+    Display(vCount);
+}
+
+void myLED(uint8_t Color)
+{
+    switch(Color)
+    {
+        case ALL_ON:
+            P4OUT |= BIT7;
+            P1OUT |= BIT0;
+            break;
+        case ALL_OFF:
+            P4OUT &= ~BIT7;
+            P1OUT &= ~BIT0;
+            break;
+        case RED_ON:
+            P1OUT |= BIT0;
+            break;
+        case RED_OFF:
+            P1OUT &= ~BIT0;
+            break;
+        case GREEN_ON:
+            P4OUT |= BIT7;
+            break;
+        case GREEN_OFF:
+            P4OUT &= ~BIT7;
+            break;
+        default:
+            P4OUT &= ~BIT7;
+            P1OUT &= ~BIT0;
+            break;
+    }
+}
+
+
+void myDelay(uint32_t vDelayValue)
+{
+    EnableTimer4746(vDelayValue);
+    while((TA0CTL & BIT0)==0){}
+    DisableTimer4746();
+}
+
+void BlinkLED(uint8_t Color)
+{                                   // Use Color_ON value
+    myLED(Color);                   // Turn on LED based on Color variable
+    myDelay(DELAY_FOR_1S);          // Delay_for_1S is a constant
+                                    // Turn OFF the same LED
+    myLED(Color+1);                 // we designed Color_OFF = Color_ON+1
+    myDelay(DELAY_FOR_1S);          // Delay_for_1S is a constant
+}
+
+void Display(uint8_t vCount)
+{
+    uint8_t vTwos, vOnes;
+    vTwos = vCount / 2; //integer division
+    vOnes = vCount % 2; //modulus division
+
+    switch(vCount)
+    {
+        case 1:
+            myLED(GREEN_ON); // Turns RED LED ON
+            myLED(RED_OFF);
+            break;
+        case 2:
+            myLED(ALL_ON); // Turns RED LED ON
+            break;
+        case 3:
+            myLED(RED_ON); // Turns RED LED ON
+            myLED(GREEN_OFF);
+            break;
+        default:
+            myLED(ALL_OFF); // Turns RED LED OFF
+            break;
+    }
+}
